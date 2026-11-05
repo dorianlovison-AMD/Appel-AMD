@@ -290,7 +290,7 @@ function leftPanel(cur){
   const tb=(k,l)=>`<button class="chip ${leftTab===k?'on':''}" onclick="leftTab='${k}';render()">${l}</button>`;
   let h=`<div class="card"><div class="chips" style="margin-bottom:10px">${tb('jour','✏️ Travail du jour')}${tb('hist','📚 Séances effectuées ('+nDone+')')}</div>`;
   if(leftTab==='jour'){
-    const prev=all.filter(d=>d!==date&&ses[d].theme).slice(0,5);
+    const prev=all.filter(d=>d<date&&ses[d].theme).slice(0,5);
     h+=`<div class="mut" style="font-size:13px;margin-bottom:4px">Travail effectué le ${fmtJ(date)}</div><textarea id="theme" rows="3" style="width:100%" placeholder="Ex. : Tai otoshi, enchaînements…" oninput="setTheme(this.value)">${esc((cur&&cur.theme)||'')}</textarea>`;
     if(prev.length)h+=`<div class="mut" style="font-size:13px;margin:12px 0 2px">Séances précédentes</div>`+prev.map(workRow).join('');
   }else{
