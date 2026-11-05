@@ -280,8 +280,19 @@ function renderAppel(){
   if(!list.length)h+='<div class="mut">Aucun élève dans ce groupe — ajoute-en dans l\'onglet Élèves.</div>';
   list.forEach(s=>{const p=marks[s.id]==='P';
     h+=`<div class="stu ${p?'p':'a'}" onclick="toggle('${s.id}')"><div class="box">${p?'✓':''}</div><div><b>${esc(s.nom)}</b> ${esc(s.prenom)}${s.note?` <small>· ${esc(s.note)}</small>`:''}${s.archive?' <small>(archivé)</small>':''}</div><span class="sp"></span><div class="cnt"><span class="badge b-ok">${(cnt[s.id]||{p:0}).p} prés.</span> <span class="badge b-ko">${(cnt[s.id]||{a:0}).a} abs.</span></div></div>`});
-  h+=`</div><div class="card"><div class="row"><button class="btn" onclick="setAll('P')">Tous présents</button><button class="btn" onclick="setAll('A')">Tout décocher</button><span class="sp"></span>${cur?'<button class="btn d" onclick="delSession()">Supprimer cet appel</button>':''}</div></div></div></div>`;
+  h+=`</div><div class="card"><div class="row"><button class="btn" onclick="setAll('P')">Tous présents</button><button class="btn" onclick="setAll('A')">Tout décocher</button><span class="sp"></span>${cur?'<button class="btn d" onclick="delSession()">Supprimer cet appel</button>':''}</div></div>${quickAddCard()}</div></div>`;
   $('view').innerHTML=h;
+}
+function quickAddCard(){
+  return `<div class="card"><b>➕ Ajouter un élève à ${esc((store.groups.find(x=>x.id===gid)||{}).name||'')}</b>
+    <div class="row" style="margin-top:8px"><input id="qn" placeholder="NOM" style="flex:1;min-width:110px"><input id="qp" placeholder="Prénom" style="flex:1;min-width:110px"><button class="btn p" onclick="quickAdd()">Ajouter</button></div></div>`;
+}
+function quickAdd(){
+  const nom=$('qn').value.trim().toUpperCase(),prenom=$('qp').value.trim();
+  if(!nom&&!prenom){$('qn').focus();return}
+  const r=(store.rosters[gid]=store.rosters[gid]||{students:[]});
+  r.students.push({id:uid('s'),nom,prenom,naissance:'',note:'',archive:false});
+  saveRoster();renderAppel();
 }
 function leftPanel(cur){
   const ses=sessionsOf(gid),sea=seasonOf(date);
@@ -361,7 +372,7 @@ function renderEleves(){
     <div class="card"><b>Élèves</b>`;
     const all=roster(gid).slice().sort((a,b)=>(a.archive-b.archive)||a.nom.localeCompare(b.nom)||a.prenom.localeCompare(b.prenom));
     all.forEach(s=>{h+=`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="sp ${s.archive?'mut':''}"><b>${esc(s.nom)}</b> ${esc(s.prenom)}${s.naissance?` <small class="mut">· ${fmt(s.naissance)}</small>`:''}${s.note?` <small class="mut">· ${esc(s.note)}</small>`:''}${s.archive?' <small>(archivé)</small>':''}</div>
-      <button class="btn" onclick="editStu('${s.id}')">Modifier</button><button class="btn" onclick="archStu('${s.id}')">${s.archive?'Réactiver':'Archiver'}</button></div>`});
+      <button class="btn" onclick="editStu('${s.id}')">Modifier</button><button class="btn" onclick="archStu('${s.id}')">${s.archive?'Réactiver':'Archiver'}</button><button class="btn d" onclick="delStu('${s.id}')">Supprimer</button></div>`});
     h+=`</div><div class="card"><b>Ajouter un élève</b><div class="row" style="margin-top:8px"><input id="nn" placeholder="NOM"><input id="np" placeholder="Prénom"><input id="nb" type="date" title="Date de naissance"><input id="nt" placeholder="Note (ceinture…)"><button class="btn p" onclick="addStu()">Ajouter</button></div></div>`;
   }
   h+=`<div class="card"><b>Nouveau groupe</b><div class="row" style="margin-top:8px"><input id="ng" placeholder="Nom du groupe"><button class="btn p" onclick="addGroup()">Créer</button></div></div>`;
@@ -380,6 +391,15 @@ function editStu(id){
   const note=prompt('Note (ceinture, foyer…)',s.note||'');if(note===null)return;
   const nais=prompt('Date de naissance (AAAA-MM-JJ, vide si inconnue)',s.naissance||'');if(nais===null)return;
   Object.assign(s,{nom:nom.trim().toUpperCase(),prenom:prenom.trim(),note:note.trim(),naissance:nais.trim()});saveRoster();renderEleves();
+}
+function delStu(id){
+  const s=roster(gid).find(x=>x.id===id);if(!s)return;
+  if(!confirm('Supprimer '+fullName(s)+' définitivement ?\nSes présences et absences seront effacées. (Pour garder l\'historique, utilise Archiver.)'))return;
+  store.rosters[gid].students=roster(gid).filter(x=>x.id!==id);saveRoster();
+  const ses=store.sessions[gid]||{};
+  Object.keys(ses).forEach(d=>{const m=ses[d].marks||{};if(!(id in m))return;delete m[id];
+    if(!Object.keys(m).length&&!ses[d].theme){delete ses[d];push(`session:${gid}:${d}`,null)}else push(`session:${gid}:${d}`,JSON.parse(JSON.stringify(ses[d])))});
+  renderEleves();
 }
 function archStu(id){const s=roster(gid).find(x=>x.id===id);s.archive=!s.archive;saveRoster();renderEleves()}
 function addGroup(){
