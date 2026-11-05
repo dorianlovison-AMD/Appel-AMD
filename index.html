@@ -16,7 +16,7 @@ header h1{font-size:18px;margin:0;flex:1}
 .cnt{white-space:nowrap}
 #login .logo{height:110px;display:block;margin:0 auto 14px}
 #sync{font-size:12px;opacity:.95}
-main{max-width:900px;margin:0 auto;padding:12px}
+main{max-width:1100px;margin:0 auto;padding:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:20px;padding:7px 13px;white-space:nowrap;cursor:pointer;font-size:14px}
@@ -54,6 +54,12 @@ td.n,th.n{text-align:right}
 .err{color:var(--ko);font-size:14px;margin:6px 0}
 #banner{background:var(--warnbg);color:var(--warn);padding:8px 14px;font-size:14px}
 .scroll{overflow-x:auto}
+.split{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:12px;align-items:start}
+.wr{display:flex;gap:10px;align-items:flex-start;padding:8px 6px;border-bottom:1px solid var(--line);cursor:pointer}
+.wr.cur{background:var(--warnbg);border-radius:8px}
+.wd{min-width:76px;color:var(--mut);font-size:14px}
+textarea{resize:vertical}
+@media(max-width:800px){.split{grid-template-columns:1fr}.split .right{order:-1}}
 </style>
 </head>
 <body>
@@ -107,7 +113,7 @@ const SHARED_EMAIL = "appel@amd-dardilly.fr"; // identifiant interne du compte p
 let sb=null,user=null;
 let store={groups:[],rosters:{},sessions:{},calendar:null};   // sessions[gid][date]={marks,theme}
 let pending={};                                 // key -> value|null (null = suppression) en attente d'envoi
-let tab='appel',gid=null,date=todayISO(),season=null,recapGroup='*',sortBy='abs';
+let leftTab='jour',tab='appel',gid=null,date=todayISO(),season=null,recapGroup='*',sortBy='abs';
 let saveTimers={};
 
 function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -144,7 +150,7 @@ async function init(){
 async function login(){
   $('loginerr').textContent='';
   const {data,error}=await sb.auth.signInWithPassword({email:SHARED_EMAIL,password:$('pw').value});
-  if(error){$('loginerr').textContent='Code incorrect.';return}
+  if(error){$('loginerr').textContent='Connexion refusée ('+(error.message||'erreur')+').';return}
   if($('nm').value.trim())localStorage.setItem('amd_name',$('nm').value.trim());
   user=data.user;$('login').classList.add('hide');start();
 }
@@ -203,6 +209,7 @@ function pushSoon(key,value){clearTimeout(saveTimers[key]);pending[key]=value;se
 function roster(g){return (store.rosters[g]&&store.rosters[g].students)||[]}
 function activeStudents(g){return roster(g).filter(s=>!s.archive)}
 function sessionsOf(g){return store.sessions[g]||{}}
+function hasMarks(s){return !!s&&Object.keys(s.marks||{}).length>0}
 function seasonsAvailable(){
   const set=new Set([seasonOf(todayISO())]);
   Object.values(store.sessions).forEach(o=>Object.keys(o).forEach(d=>set.add(seasonOf(d))));
@@ -210,7 +217,7 @@ function seasonsAvailable(){
 }
 function stats(g,seas){
   // par élève : présences/absences sur la saison
-  const ses=sessionsOf(g),dates=Object.keys(ses).filter(d=>seasonOf(d)===seas).sort();
+  const ses=sessionsOf(g),dates=Object.keys(ses).filter(d=>seasonOf(d)===seas&&hasMarks(ses[d])).sort();
   const map={};
   roster(g).forEach(s=>map[s.id]={s,p:0,a:0});
   dates.forEach(d=>{const m=ses[d].marks||{};Object.entries(m).forEach(([id,v])=>{if(!map[id])return;v==='P'?map[id].p++:map[id].a++})});
@@ -259,35 +266,58 @@ function renderAppel(){
   const nP=list.filter(s=>marks[s.id]==='P').length;
   const cnt={};stats(gid,seasonOf(date)).rows.forEach(r=>cnt[r.s.id]=r);
   const today=todayISO(),planned=plannedDates(g);
-  const todo=planned.filter(d=>d<today&&!ses[d]).slice(-4);          // séances passées non saisies
-  const next=planned.filter(d=>d>=today).slice(0,6);                  // prochaines séances
-  const done=Object.keys(ses).sort().reverse().slice(0,6);            // déjà saisies
+  const todo=planned.filter(d=>d<today&&!hasMarks(ses[d])).slice(-4);   // séances passées non saisies
+  const next=planned.filter(d=>d>=today).slice(0,6);                      // prochaines séances
   let h=`<div class="card"><div class="row">
     <input type="date" id="dt" value="${date}" onchange="date=this.value;render()">
     <span class="sp"></span>
-    <span class="badge ${cur?'b-ok':'b-w'}">${cur?'Appel enregistré':'Pas encore d\'appel'}</span></div>`;
+    <span class="badge ${hasMarks(cur)?'b-ok':'b-w'}">${hasMarks(cur)?'Appel enregistré':'Pas encore d\'appel'}</span></div>`;
   const chip=(d,cls)=>`<button class="chip ${d===date?'on':''}" ${cls&&d!==date?`style="border-color:${cls}"`:''} onclick="date='${d}';render()">${fmtJ(d)}</button>`;
   if(todo.length)h+=`<div class="mut" style="margin-top:8px;font-size:13px">⚠ À saisir</div><div class="chips">${todo.map(d=>chip(d,'var(--warn)')).join('')}</div>`;
   if(next.length)h+=`<div class="mut" style="margin-top:8px;font-size:13px">Prochaines séances</div><div class="chips">${next.map(d=>chip(d,'')).join('')}</div>`;
-  if(done.length)h+=`<div class="mut" style="margin-top:8px;font-size:13px">Déjà saisies</div><div class="chips">${done.map(d=>chip(d,'var(--ok)')).join('')}</div>`;
   if(closedOn(date))h+=`<div class="badge b-w" style="margin-top:8px">📅 ${esc(closedOn(date).label)} — pas de séance prévue ce jour</div>`;
-  h+=`</div><div class="card"><div class="row" style="margin-bottom:6px"><b>${esc(g.name)}</b><span class="sp"></span><span class="big" style="font-size:20px">${nP} / ${list.length}</span> présents</div><div class="mut" style="font-size:12px;margin-bottom:4px">Compteurs : saison ${seasonLabel(seasonOf(date))}, appels enregistrés</div>`;
+  h+=`</div><div class="split"><div class="left">${leftPanel(cur)}</div><div class="right"><div class="card"><div class="row" style="margin-bottom:6px"><b>${esc(g.name)}</b><span class="sp"></span><span class="big" style="font-size:20px">${nP} / ${list.length}</span> présents</div><div class="mut" style="font-size:12px;margin-bottom:4px">Compteurs : saison ${seasonLabel(seasonOf(date))}, appels enregistrés</div>`;
   if(!list.length)h+='<div class="mut">Aucun élève dans ce groupe — ajoute-en dans l\'onglet Élèves.</div>';
   list.forEach(s=>{const p=marks[s.id]==='P';
     h+=`<div class="stu ${p?'p':'a'}" onclick="toggle('${s.id}')"><div class="box">${p?'✓':''}</div><div><b>${esc(s.nom)}</b> ${esc(s.prenom)}${s.note?` <small>· ${esc(s.note)}</small>`:''}${s.archive?' <small>(archivé)</small>':''}</div><span class="sp"></span><div class="cnt"><span class="badge b-ok">${(cnt[s.id]||{p:0}).p} prés.</span> <span class="badge b-ko">${(cnt[s.id]||{a:0}).a} abs.</span></div></div>`});
-  h+=`</div><div class="card"><div class="row"><button class="btn" onclick="setAll('P')">Tous présents</button><button class="btn" onclick="setAll('A')">Tout décocher</button><span class="sp"></span>${cur?'<button class="btn d" onclick="delSession()">Supprimer cet appel</button>':''}</div>
-    <div style="margin-top:10px"><label class="mut">Thème de la séance (facultatif)</label><br><input style="width:100%" id="theme" value="${esc((cur&&cur.theme)||'')}" onchange="setTheme(this.value)"></div></div>`;
+  h+=`</div><div class="card"><div class="row"><button class="btn" onclick="setAll('P')">Tous présents</button><button class="btn" onclick="setAll('A')">Tout décocher</button><span class="sp"></span>${cur?'<button class="btn d" onclick="delSession()">Supprimer cet appel</button>':''}</div></div></div></div>`;
   $('view').innerHTML=h;
+}
+function leftPanel(cur){
+  const ses=sessionsOf(gid),sea=seasonOf(date);
+  const all=Object.keys(ses).filter(d=>seasonOf(d)===sea&&(hasMarks(ses[d])||ses[d].theme)).sort().reverse();
+  const nDone=all.filter(d=>hasMarks(ses[d])).length;
+  const tb=(k,l)=>`<button class="chip ${leftTab===k?'on':''}" onclick="leftTab='${k}';render()">${l}</button>`;
+  let h=`<div class="card"><div class="chips" style="margin-bottom:10px">${tb('jour','✏️ Travail du jour')}${tb('hist','📚 Séances effectuées ('+nDone+')')}</div>`;
+  if(leftTab==='jour'){
+    const prev=all.filter(d=>d!==date&&ses[d].theme).slice(0,5);
+    h+=`<div class="mut" style="font-size:13px;margin-bottom:4px">Travail effectué le ${fmtJ(date)}</div><textarea id="theme" rows="3" style="width:100%" placeholder="Ex. : Tai otoshi, enchaînements…" oninput="setTheme(this.value)">${esc((cur&&cur.theme)||'')}</textarea>`;
+    if(prev.length)h+=`<div class="mut" style="font-size:13px;margin:12px 0 2px">Séances précédentes</div>`+prev.map(workRow).join('');
+  }else{
+    h+=all.length?all.map(workRow).join(''):'<div class="mut">Aucune séance enregistrée cette saison.</div>';
+  }
+  return h+'</div>';
+}
+function workRow(d){
+  const s=sessionsOf(gid)[d],m=Object.values((s&&s.marks)||{}),p=m.filter(x=>x==='P').length;
+  return `<div class="wr ${d===date?'cur':''}" onclick="date='${d}';render()"><div class="wd">${fmtJ(d)}</div><div class="sp">${s.theme?esc(s.theme):'<span class="mut">—</span>'}</div>${m.length?`<span class="badge ${p/m.length>=0.7?'b-ok':'b-w'}">${p}/${m.length}</span>`:''}</div>`;
 }
 function ensureSession(){
   const ses=(store.sessions[gid]=store.sessions[gid]||{});
-  if(!ses[date]){const marks={};activeStudents(gid).forEach(s=>marks[s.id]='A');ses[date]={marks}}
+  if(!ses[date])ses[date]={marks:{}};
+  if(!hasMarks(ses[date])){const marks={};activeStudents(gid).forEach(s=>marks[s.id]='A');ses[date].marks=marks}
   return ses[date];
 }
 function saveSession(){const s=store.sessions[gid][date];pushSoon(`session:${gid}:${date}`,JSON.parse(JSON.stringify(s)))}
 function toggle(id){const s=ensureSession();s.marks[id]=s.marks[id]==='P'?'A':'P';saveSession();renderAppel()}
 function setAll(v){const s=ensureSession();activeStudents(gid).forEach(x=>s.marks[x.id]=v);saveSession();renderAppel()}
-function setTheme(t){const s=ensureSession();s.theme=t.trim();if(!s.theme)delete s.theme;saveSession()}
+function setTheme(t){
+  const ses=(store.sessions[gid]=store.sessions[gid]||{});
+  const s=(ses[date]=ses[date]||{marks:{}});
+  s.theme=t.trim();if(!s.theme)delete s.theme;
+  if(!hasMarks(s)&&!s.theme){delete ses[date];pushSoon(`session:${gid}:${date}`,null);return}
+  saveSession();
+}
 function delSession(){if(!confirm('Supprimer l\'appel du '+fmt(date)+' pour ce groupe ?'))return;delete store.sessions[gid][date];push(`session:${gid}:${date}`,null);renderAppel()}
 
 /* ---- Récap ---- */
@@ -304,14 +334,14 @@ function renderRecap(){
     const g=store.groups.find(x=>x.id===recapGroup);if(!g){recapGroup='*';return renderRecap()}
     const {dates,rows}=stats(g.id,season);
     const tp=rows.reduce((a,r)=>a+r.p,0),ta=rows.reduce((a,r)=>a+r.a,0);
-    const ses0=sessionsOf(g.id),pl=plannedDates(g).filter(d=>seasonOf(d)===season),plLeft=pl.filter(d=>!ses0[d]);
+    const ses0=sessionsOf(g.id),pl=plannedDates(g).filter(d=>seasonOf(d)===season),plLeft=pl.filter(d=>!hasMarks(ses0[d]));
     rows.forEach(r=>r.t=r.p+r.a);
     rows.sort((x,y)=>sortBy==='abs'?y.a-x.a||x.s.nom.localeCompare(y.s.nom):sortBy==='pres'?y.p-x.p:sortBy==='pct'?((x.t?x.p/x.t:1)-(y.t?y.p/y.t:1)):fullName(x.s).localeCompare(fullName(y.s)));
     h+=`<div class="card"><div class="stats"><div><div class="big">${dates.length}</div><span class="mut">séances faites</span></div><div><div class="big">${plLeft.filter(d=>d>=todayISO()).length}</div><span class="mut">à venir (prévues)</span></div><div><div class="big" style="color:var(--ok)">${tp}</div><span class="mut">présences</span></div><div><div class="big" style="color:var(--ko)">${ta}</div><span class="mut">absences</span></div><div><div class="big">${tp+ta?Math.round(100*tp/(tp+ta)):0}%</div><span class="mut">taux</span></div></div></div>
     <div class="card scroll"><table><tr><th onclick="sortBy='nom';render()">Élève</th><th class="n" onclick="sortBy='pres';render()">Prés.</th><th class="n" onclick="sortBy='abs';render()">Abs.</th><th onclick="sortBy='pct';render()">Assiduité</th></tr>
     ${rows.map(r=>{const pct=r.t?Math.round(100*r.p/r.t):0;return `<tr><td>${esc(r.s.nom)} ${esc(r.s.prenom)}${r.s.archive?' <small class="mut">(archivé)</small>':''}</td><td class="n">${r.p}</td><td class="n">${r.a}</td><td><div class="row" style="flex-wrap:nowrap"><div class="bar sp"><i style="width:${pct}%"></i></div><span class="badge ${pct>=80?'b-ok':pct>=60?'b-w':'b-ko'}">${r.t?pct+'%':'–'}</span></div></td></tr>`}).join('')}</table></div>
-    <div class="card scroll"><b>Séances</b><table style="margin-top:6px"><tr><th>Date</th><th class="n">Prés.</th><th class="n">Abs.</th><th>Thème</th></tr>
-    ${[...new Set([...dates,...plLeft])].sort().reverse().map(d=>{const s=ses0[d];if(!s)return `<tr class="mut"><td>${fmtJ(d)}</td><td class="n">–</td><td class="n">–</td><td>${d<todayISO()?'non saisi':'à venir'}</td></tr>`;const m=Object.values(s.marks||{});return `<tr><td>${fmtJ(d)}</td><td class="n">${m.filter(x=>x==='P').length}</td><td class="n">${m.filter(x=>x==='A').length}</td><td>${esc(s.theme||'')}</td></tr>`}).join('')}</table></div>`;
+    <div class="card scroll"><b>Séances</b><table style="margin-top:6px"><tr><th>Date</th><th class="n">Prés.</th><th class="n">Abs.</th><th>Travail effectué</th></tr>
+    ${[...new Set([...dates,...plLeft,...Object.keys(ses0).filter(d=>seasonOf(d)===season)])].sort().reverse().map(d=>{const s=ses0[d],m=Object.values((s&&s.marks)||{});if(!m.length)return `<tr class="mut"><td>${fmtJ(d)}</td><td class="n">–</td><td class="n">–</td><td>${s&&s.theme?esc(s.theme):(d<todayISO()?'appel non saisi':'à venir')}</td></tr>`;return `<tr><td>${fmtJ(d)}</td><td class="n">${m.filter(x=>x==='P').length}</td><td class="n">${m.filter(x=>x==='A').length}</td><td>${esc(s.theme||'')}</td></tr>`}).join('')}</table></div>`;
   }
   $('view').innerHTML=h;
 }
